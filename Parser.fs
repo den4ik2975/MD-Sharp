@@ -2,14 +2,6 @@
 open AST
 open FParsec
 
-let (<!>) (p: Parser<_,_>) label : Parser<_,_> =
-    fun stream ->
-        printfn "%A: Entering %s" stream.Position label
-        let reply = p stream
-        printfn "%A: Leaving %s (%A)" stream.Position label reply.Status
-        reply
-        
-// Parser module
 // Helper parsers
 let ws = spaces
 let str_ws s = pstring s >>. ws
@@ -19,41 +11,40 @@ let skipNewline = skipChar '\n' <|> (skipChar '\r' .>> skipChar '\n')
 let expr, exprRef = createParserForwardedToRef<expr, unit>()
 
 // Basic value parsers
-let pint = pint32 |>> Int .>> ws <!> "pint"
+let pint = pint32 |>> Int .>> ws
 
 let pbool =
-    (stringReturn "true" (Bool true) <|> stringReturn "false" (Bool false)) .>> ws <!> "pbool"
+    (stringReturn "true" (Bool true) <|> stringReturn "false" (Bool false)) .>> ws
 
 // Identifier parser
 let isIdentifierFirstChar c = isLetter c || c = '_'
 let isIdentifierChar c = isLetter c || isDigit c || c = '_'
 let identifier = 
-    many1Satisfy2 isIdentifierFirstChar isIdentifierChar .>> ws <!> "identifier"
+    many1Satisfy2 isIdentifierFirstChar isIdentifierChar .>> ws
 
 // Variable reference parser
-let variable = identifier |>> Var <!> "variable"
+let variable = identifier |>> Var
 
 // String literal parser
 let stringLiteral = 
-    between (pstring "\"") (pstring "\"") (manyChars (noneOf "\"")) .>> ws <!> "stringLiteral"
+    between (pstring "\"") (pstring "\"") (manyChars (noneOf "\"")) .>> ws
 
-// Comment parser - headings are used as comments
+// Comment parser (headings are used as comments)
 let headingComment =
     let headingPrefix = many1 (pchar '#') .>> pchar ' '
-    headingPrefix >>. restOfLine true |>> Comment <!> "headingComment"
+    headingPrefix >>. restOfLine true |>> Comment
 
-// Variable declaration: - variable = value
 // Variable declaration: - variable = value
 let variableDeclaration =
     let dashIdentifier = pstring "- " >>. identifier
     dashIdentifier .>> str_ws "=" .>>. expr .>> ws .>> optional skipNewline
-    |>> (fun (name, value) -> Let(name, value, Var name)) <!> "variableDeclaration"
+    |>> (fun (name, value) -> Let(name, value, Var name))
 
 // Function arguments parser
-let identifierNoWs = many1Satisfy2 isIdentifierFirstChar isIdentifierChar <!> "identifierNoWs"
+let identifierNoWs = many1Satisfy2 isIdentifierFirstChar isIdentifierChar
 
 let functionArgs = 
-    sepBy (identifierNoWs .>> ws) (pchar ',' >>. ws) <!> "functionArgs"
+    sepBy (identifierNoWs .>> ws) (pchar ',' >>. ws)
 
 // Conditional: if condition: [x] true_branch [ ] false_branch
 let conditional, conditionalRef = createParserForwardedToRef<expr, unit>()
@@ -67,7 +58,7 @@ conditionalRef.Value <-
         let trueExpr = 
             match trueExprs with
             | [single] -> single
-            | multiple -> // Create sequence of expressions using Let with "_"
+            | multiple ->
                 List.fold (fun expr nextExpr -> Let("_", expr, nextExpr))
                           (List.head multiple) 
                           (List.tail multiple)
@@ -76,12 +67,12 @@ conditionalRef.Value <-
             match falseExprs with
             | [] -> Var "()"
             | [single] -> single
-            | multiple -> // Create sequence of expressions using Let with "_"
+            | multiple -> 
                 List.fold (fun expr nextExpr -> Let("_", expr, nextExpr))
                           (List.head multiple) 
                           (List.tail multiple)
 
-        Cond(condition, trueExpr, falseExpr)) <!> "conditional"
+        Cond(condition, trueExpr, falseExpr))
 
 // Function body conditional parser - specifically for conditionals within function bodies
 let functionBodyConditional =
@@ -92,7 +83,7 @@ let functionBodyConditional =
         let trueExpr = 
             match trueExprs with
             | [single] -> single
-            | multiple -> // Create sequence of expressions using Let with "_"
+            | multiple ->
                 List.fold (fun expr nextExpr -> Let("_", expr, nextExpr))
                           (List.head multiple) 
                           (List.tail multiple)
@@ -101,20 +92,20 @@ let functionBodyConditional =
             match falseExprs with
             | [] -> Var "()"
             | [single] -> single
-            | multiple -> // Create sequence of expressions using Let with "_"
+            | multiple ->
                 List.fold (fun expr nextExpr -> Let("_", expr, nextExpr))
                           (List.head multiple) 
                           (List.tail multiple)
 
-        Cond(condition, trueExpr, falseExpr)) <!> "functionBodyConditional"
+        Cond(condition, trueExpr, falseExpr))
 
 // Function body line parser - handles conditionals within function bodies
 let functionBodyLine =
     choice [
         attempt (pstring "> " >>. functionBodyConditional)
-        attempt (pstring "> ^" >>. ws >>. expr) // Special case for return expression
+        attempt (pstring "> ^" >>. ws >>. expr)
         pstring "> " >>. expr
-    ] .>> ws .>> optional skipNewline <!> "functionBodyLine"
+    ] .>> ws .>> optional skipNewline
 
 // Lambda function definition: >[!] arg1, arg2, ...
 let lambdaFunctionDefinition =
@@ -122,13 +113,11 @@ let lambdaFunctionDefinition =
     functionArgs .>> ws .>> optional skipNewline .>>.
     many functionBodyLine
     |>> (fun (args, bodyLines) ->
-        // Create nested lambda expressions for multiple arguments
         let rec buildLambda args body =
             match args with
             | [] -> body
             | arg::rest -> Lam(arg, buildLambda rest body)
         
-        // Process body lines to find return expression (^)
         let bodyExpr, returnExpr =
             let lastIndex = bodyLines.Length - 1
             if lastIndex >= 0 then
@@ -159,129 +148,95 @@ let lambdaFunctionDefinition =
         // If there's a return expression, apply the lambda to it
         match returnExpr with
         | Some value -> App(lambdaExpr, value)
-        | None -> lambdaExpr) <!> "lambdaFunctionDefinition"
-
-// Regular function definition: >[!function_name] arg1, arg2, ...
-// This is now only used for parsing, but not included in the top-level declarations
-let functionDefinition =
-    str_ws ">[!" >>. identifier .>> str_ws "]" .>>.
-    functionArgs .>> ws .>> optional skipNewline .>>.
-    many1 functionBodyLine
-    |>> (fun ((name, args), body) ->
-        // Create nested lambda expressions for multiple arguments
-        let rec buildLambda args body =
-            match args with
-            | [] -> body
-            | arg::rest -> Lam(arg, buildLambda rest body)
-        
-        // Combine multiple expressions into a single expression using Let with "_" variable
-        let combinedBody =
-            match body with
-            | [single] -> single
-            | multiple -> 
-                // Use nested Let expressions with "_" instead of PFunc ";"
-                List.fold (fun expr nextExpr -> Let("_", expr, nextExpr)) 
-                          (List.head multiple) 
-                          (List.tail multiple)
-        
-        Let(name, buildLambda args combinedBody, Var name)) <!> "functionDefinition"
+        | None -> lambdaExpr)
 
 // Named function declaration: - >[!function_name] arg1, arg2, ...
 let namedFunctionDeclaration =
-    let dashPrefix = pstring "- " <!> "dashPrefix"
+    let dashPrefix = pstring "- "
     dashPrefix >>. 
     (str_ws ">[!" >>. identifier .>> str_ws "]" .>>.
      functionArgs .>> ws .>> optional skipNewline .>>.
      many1 functionBodyLine)
     |>> (fun ((name, args), body) ->
-            // Create nested lambda expressions for multiple arguments
             let rec buildLambda args body =
                 match args with
                 | [] -> body
                 | arg::rest -> Lam(arg, buildLambda rest body)
             
-            // If you want to combine multiple expressions in the body
             let combinedBody = 
                 match body with
                 | [single] -> single
                 | multiple -> 
-                    // Use nested Let expressions with "_" instead of PFunc ";"
                     List.fold (fun expr nextExpr -> Let("_", expr, nextExpr))
                              (List.head multiple)
                              (List.tail multiple)
                              
-            Let(name, buildLambda args combinedBody, Var name)) <!> "namedFunctionDeclaration"
+            Let(name, buildLambda args combinedBody, Var name))
 
-// Named recursive function declaration: - >[!!function_name] arg1, arg2, ...
+// Recursive function declaration: - >[!!function_name] arg1, arg2, ...
 let namedRecursiveFunctionDeclaration =
-    let dashPrefix = pstring "- " <!> "dashPrefix"
+    let dashPrefix = pstring "- "
     dashPrefix >>. 
     (str_ws ">[!!" >>. identifier .>> str_ws "]" .>>.
      functionArgs .>> ws .>> optional skipNewline .>>.
      many1 functionBodyLine)
     |>> (fun ((name, args), body) ->
-            // Create nested lambda expressions for multiple arguments
             let rec buildLambda args body =
                 match args with
                 | [] -> body
                 | arg::rest -> Lam(arg, buildLambda rest body)
             
-            // If you want to combine multiple expressions in the body
             let combinedBody = 
                 match body with
                 | [single] -> single
                 | multiple -> 
-                    // Use nested Let expressions with "_" instead of PFunc ";"
                     List.fold (fun expr nextExpr -> Let("_", expr, nextExpr))
                              (List.head multiple)
                              (List.tail multiple)
                              
-            LetRec(name, buildLambda args combinedBody, Var name)) <!> "namedRecursiveFunctionDeclaration"
+            LetRec(name, buildLambda args combinedBody, Var name))
     
 // Function call: [function_name](arg1, arg2, ...)
 let functionCall =
     between (str_ws "[") (str_ws "]") identifier .>>.
     between (str_ws "(") (str_ws ")") (sepBy expr (str_ws ","))
     |>> (fun (name, args) ->
-        // Apply arguments one by one
-        List.fold (fun acc arg -> App(acc, arg)) (Var name) args) <!> "functionCall"
+        List.fold (fun acc arg -> App(acc, arg)) (Var name) args)
  
 let stringExpr = 
-    stringLiteral |>> Str <!> "stringExpr"
+    stringLiteral |>> Str
 
 
-// File operations
 // read_file "foo.txt"
 let readFile =
     str_ws "[read_file]" >>.
     between (str_ws "(") (str_ws ")") stringLiteral
-    |>> (fun path -> ReadFile(Str path)) <!> "readFile"
+    |>> (fun path -> ReadFile(Str path))
 
 // write_file "out.txt", expr
 let writeFile =
     str_ws "[write_file]" >>.
     between (str_ws "(") (str_ws ")")
         (stringLiteral .>> str_ws "," .>>. expr)
-    |>> (fun (path, content) -> WriteFile(Str path, content)) <!> "writeFile"
+    |>> (fun (path, content) -> WriteFile(Str path, content))
 
-// List: [1, 2, 3, 4]
+// List: [a, b, c]
 let listExpr =
     between (str_ws "[") (str_ws "]") (sepBy expr (str_ws ","))
     |>> (fun xs ->                               // [e1, e2, e3] →
-        List.foldBack (fun h t -> Cons(h,t)) xs Nil) <!> "list"
+        List.foldBack (fun h t -> Cons(h,t)) xs Nil)
 
-// Range: [1..10]
+// Range: [a..b]
 let range =
     between (str_ws "[") (str_ws "]") (expr .>> str_ws ".." .>>. expr)
-    |>> Range <!> "range"
+    |>> Range
 
 // Output: ! value
-// Modified to accept only one expression and convert it to a print function call
 let output =
     str_ws "!" >>. expr
-    |>> (fun e -> App(PFunc "print", e)) <!> "output"
+    |>> (fun e -> App(PFunc "print", e))
 
-// Term parser (for basic expressions)
+// Term parser
 let term =
     choice [
         pint
@@ -296,7 +251,7 @@ let term =
         attempt output
         attempt stringExpr
         between (str_ws "(") (str_ws ")") expr
-    ] <!> "term"
+    ]
 
 // Binary operations parser
 let opp = OperatorPrecedenceParser<expr, unit, unit>()
@@ -316,9 +271,6 @@ let remOp = InfixOperator("%", ws, 2, Associativity.Left,
                          fun x y -> App(App(PFunc "%", x), y))
 let eqOp = InfixOperator("=", ws, 1, Associativity.None, 
                         fun x y -> App(App(PFunc "=", x), y))
-
-// Modify the greater-than operator to not match at the beginning of a line
-// or when it's part of a function body line pattern
 let gtOp = InfixOperator(">", 
                     notFollowedBy (pchar ' ') >>. 
                     notFollowedBy (pstring "[!") >>. 
@@ -357,22 +309,17 @@ opp.AddOperator(andOp)
 opp.AddOperator(orOp)
 opp.AddOperator(htOp)
 
-// Connect the expression reference to our operator parser
-exprRef.Value <- opp.ExpressionParser <!> "expr"
+exprRef.Value <- opp.ExpressionParser
 
-// Top-level constructs
 let declaration =
     choice [
         attempt namedFunctionDeclaration
         attempt namedRecursiveFunctionDeclaration
         attempt variableDeclaration
-    ] <!> "declaration"
+    ]
 
-// Program parser - a series of declarations and expressions
 let program = 
     let emptyLine = skipNewline >>% Comment ""
-
-    // Make each parser definition handle its own newlines completely
     let lineParser = 
         choice [
             attempt (ws >>. headingComment .>> optional skipNewline)
@@ -383,14 +330,45 @@ let program =
             attempt (ws >>. variableDeclaration .>> optional skipNewline)
             attempt (ws >>. lambdaFunctionDefinition .>> optional skipNewline)
             attempt (ws >>. expr .>> optional skipNewline)
-            emptyLine  // Already handles its own newline
+            emptyLine
         ]
 
-    many lineParser .>> eof <!> "program"
+    many lineParser .>> eof
 
-        
-// Function to parse MD# code
+
+let combineStatements (statements: expr list) =
+    let codeStatements = 
+        statements 
+        |> List.filter (function 
+            | Comment _ -> false 
+            | _ -> true)
+
+    match codeStatements with
+    | [] -> Var "()" // empty program returns unit
+    | [single] -> single // single statement program
+    | _ ->
+        // Build tree from right to left
+        let allButLast = List.take (codeStatements.Length - 1) codeStatements
+        let last = List.last codeStatements
+
+        List.foldBack 
+            (fun curr acc ->
+                match curr with
+                | Let(name, value, Var v) when name = v -> 
+                    // Variable declaration: replace Var v with the accumulated tree
+                    Let(name, value, acc)
+                | LetRec(name, value, Var v) when name = v ->
+                    // Recursive function declaration
+                    LetRec(name, value, acc)
+                | _ -> 
+                    // Any other expression: wrap in Let with "_"
+                    Let("_", curr, acc))
+            allButLast
+            last
+
 let parseProgram (code: string) =
     match run program code with
-    | Success(result, _, _) -> result
+    | Success(result, _, _) -> 
+        // Combine the list of statements into a single AST
+        combineStatements result
     | Failure(errorMsg, _, _) -> failwith errorMsg
