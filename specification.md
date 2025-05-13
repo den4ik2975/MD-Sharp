@@ -79,9 +79,6 @@ Declaring Lists:
 `- list_name = [1, 2, 3, 4]`
 `- range_name = [1..10]`
 
-Operations with lists:
-head\tail
-`h:-:t`
 
 ### Comments and documentation
 

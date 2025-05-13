@@ -15,6 +15,7 @@
         <Content Include="samples\factorial.md" />
         <Content Include="samples\simple_program.md" />
         <Content Include="samples\if_and_functions.md" />
+        <Content Include="samples\test.md" />
         <Compile Include="Program.fs" />
         <Content Include="README.md" />
         <Content Include="specification.md" />
