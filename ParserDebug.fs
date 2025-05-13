@@ -111,9 +111,10 @@ let functionBodyConditional =
 let functionBodyLine =
     choice [
         attempt (pstring "> " >>. functionBodyConditional)
-        attempt (pstring "> ^" >>. ws >>. expr)
+        attempt (pstring "> ^" >>. ws >>. expr |>> (fun e -> App(Var "^", e)))
         pstring "> " >>. expr
-    ] .>> ws .>> optional skipNewline <!> "functionBodyLine"
+    ] .>> ws .>> optional skipNewline
+
 
 // Lambda function definition: >[!] arg1, arg2, ...
 let lambdaFunctionDefinition =
@@ -121,38 +122,51 @@ let lambdaFunctionDefinition =
     functionArgs .>> ws .>> optional skipNewline .>>.
     many functionBodyLine
     |>> (fun (args, bodyLines) ->
+        // Separate the return value (line with ^) from the body
+        let bodyExprs, returnExpr =
+            let allLines = List.ofSeq bodyLines
+            
+            // Partition the lines into regular body lines and return value line
+            let bodyOnly, returnLines = 
+                allLines
+                |> List.partition (function
+                    | App(Var "^", _) -> false
+                    | _ -> true)
+                
+            // Extract the return expression if it exists
+            let returnValue = 
+                match allLines |> List.choose (function 
+                    | App(Var "^", value) -> Some value
+                    | _ -> None) with
+                | value::_ -> Some value
+                | [] -> None
+                
+            bodyOnly, returnValue
+
+        // Combine body expressions into a single expression
+        let bodyExpr = 
+            match bodyExprs with
+            | [] -> Var "()"
+            | [single] -> single
+            | multiple -> 
+                List.fold (fun expr nextExpr -> Let("_", expr, nextExpr))
+                          (List.head multiple) 
+                          (List.tail multiple)
+
+        // Build the lambda function
         let rec buildLambda args body =
             match args with
             | [] -> body
             | arg::rest -> Lam(arg, buildLambda rest body)
-        
-        let bodyExpr, returnExpr =
-            let lastIndex = bodyLines.Length - 1
-            if lastIndex >= 0 then
-                match bodyLines.[lastIndex] with
-                | App(Var "^", value) -> 
-                    let bodyLines' = if lastIndex > 0 then bodyLines.[0..lastIndex-1] else []
-                    let bodyExpr = 
-                        match bodyLines' with
-                        | [] -> Var "()"
-                        | [single] -> single
-                        | _ -> List.fold (fun acc next -> Let("_", acc, next)) bodyLines'.[0] bodyLines'.[1..]
-                    bodyExpr, Some value
-                | _ ->
-                    let bodyExpr = 
-                        match bodyLines with
-                        | [] -> Var "()"
-                        | [single] -> single
-                        | _ -> List.fold (fun acc next -> Let("_", acc, next)) bodyLines.[0] bodyLines.[1..]
-                    bodyExpr, None
-            else
-                Var "()", None
-        
-        let lambdaExpr = buildLambda args bodyExpr
-        
+
+        // Create the lambda expression
+        let lambda = buildLambda args bodyExpr
+
+        // Apply the lambda to the argument if one exists
         match returnExpr with
-        | Some value -> App(lambdaExpr, value)
-        | None -> lambdaExpr) <!> "lambdaFunctionDefinition"
+        | Some arg -> App(lambda, arg)  // This creates App(Lam(...), arg)
+        | None -> lambda
+    )
 
 // Named function declaration: - >[!function_name] arg1, arg2, ...
 let namedFunctionDeclaration =
@@ -339,7 +353,75 @@ let program =
 
     many lineParser .>> eof <!> "program"
 
-
+let rec printExpr indent expr =
+    let indentStr = String.replicate indent " "
+    match expr with
+    | Int n -> printfn "%s- Int: %d" indentStr n
+    | Bool b -> printfn "%s- Bool: %b" indentStr b
+    | Var id -> printfn "%s- Var: %s" indentStr id
+    | App(e1, e2) ->
+        printfn "%s- App:" indentStr
+        printExpr (indent + 2) e1
+        printExpr (indent + 2) e2
+    | Lam(id, e) ->
+        printfn "%s- Lambda (param: %s):" indentStr id
+        printExpr (indent + 2) e
+    | PFunc id -> printfn "%s- PFunc: %s" indentStr id
+    | Cond(e1, e2, e3) ->
+        printfn "%s- Conditional:" indentStr
+        printfn "%s  Condition:" indentStr
+        printExpr (indent + 4) e1
+        printfn "%s  Then:" indentStr
+        printExpr (indent + 4) e2
+        printfn "%s  Else:" indentStr
+        printExpr (indent + 4) e3
+    | Let(id, e1, e2) ->
+        printfn "%s- Let (var: %s):" indentStr id
+        printfn "%s  Value:" indentStr
+        printExpr (indent + 4) e1
+        printfn "%s  In:" indentStr
+        printExpr (indent + 4) e2
+    | LetRec(id, e1, e2) ->
+        printfn "%s- LetRec (var: %s):" indentStr id
+        printfn "%s  Value:" indentStr
+        printExpr (indent + 4) e1
+        printfn "%s  In:" indentStr
+        printExpr (indent + 4) e2
+    | Op(id, n, args) ->
+        printfn "%s- Op: %s (arity: %d)" indentStr id n
+        args |> List.iteri (fun i arg ->
+            printfn "%s  Arg %d:" indentStr i
+            printExpr (indent + 4) arg)
+    | Closure(e, env) ->
+        printfn "%s- Closure:" indentStr
+        printExpr (indent + 2) e
+        printfn "%s  Environment: %A" indentStr env
+    | RClosure(e, env, id) ->
+        printfn "%s- RClosure (recursive var: %s):" indentStr id
+        printExpr (indent + 2) e
+        printfn "%s  Environment: %A" indentStr env
+    | Range(e1, e2) ->
+        printfn "%s- Range:" indentStr
+        printfn "%s  Start:" indentStr
+        printExpr (indent + 4) e1
+        printfn "%s  End:" indentStr
+        printExpr (indent + 4) e2
+    | ReadFile path ->
+        printfn "%s- ReadFile:" indentStr
+        printfn "%s  Path:" indentStr
+        printExpr (indent + 4) path
+    | WriteFile(path, content) ->
+        printfn "%s- WriteFile:" indentStr
+        printfn "%s  Path:" indentStr
+        printExpr (indent + 4) path
+        printfn "%s  Content:" indentStr
+        printExpr (indent + 4) content
+    | Comment string ->
+        printfn "%s- Comment: %s" indentStr string
+    | Str string ->
+        printfn "%s- String: %s" indentStr string
+ 
+ 
 // Combine list of AST nodes in one AST 
 let combineStatements (statements: expr list) =
     let codeStatements = 
@@ -366,9 +448,11 @@ let combineStatements (statements: expr list) =
                     Let("_", curr, acc))
             allButLast
             last
-            
+    
 let parseProgram (code: string) =
     match run program code with
-    | Success(result, _, _) -> 
-        combineStatements result
+    | Success(result, _, _) ->
+        let combinedResult = combineStatements result
+        printExpr 2 combinedResult
+        combinedResult
     | Failure(errorMsg, _, _) -> failwith errorMsg
