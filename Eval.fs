@@ -88,15 +88,15 @@ let rec eval exp env =
         | Lam(id,ex) -> Closure(exp,env)
         | App(ex1,ex2) -> apply (eval ex1 env) (eval ex2 env)
         
-        | PFunc id ->                           // расширяем для работы со списками
+        | PFunc id ->                           
             let arity =
                 match id with
                 | "head" | "tail" -> 1
                 | "print"         -> 1
                 | "read"          -> 0
                 | _               -> 2
-            if arity = 0 then                   // read вызывается без скобок
-                (funof id) []                   // сразу исполняем
+            if arity = 0 then                  
+                (funof id) []                   
             else
                 Op(id, arity, [])
 
@@ -209,8 +209,6 @@ module Runner =
         | Str string ->
             printfn "%s- String: %s" indentStr string
         
-    /// Выполняем последовательность выражений,
-    /// возвращаем значение последнего
     let evalProgram (prog:expr) =
         try
             let mutable env : env = Map.empty

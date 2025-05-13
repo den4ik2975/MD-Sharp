@@ -132,7 +132,6 @@ let lambdaFunctionDefinition =
                         | _ -> List.fold (fun acc next -> Let("_", acc, next)) bodyLines'.[0] bodyLines'.[1..]
                     bodyExpr, Some value
                 | _ ->
-                    // No return expression
                     let bodyExpr = 
                         match bodyLines with
                         | [] -> Var "()"
@@ -142,10 +141,8 @@ let lambdaFunctionDefinition =
             else
                 Var "()", None
         
-        // Create the lambda expression
         let lambdaExpr = buildLambda args bodyExpr
         
-        // If there's a return expression, apply the lambda to it
         match returnExpr with
         | Some value -> App(lambdaExpr, value)
         | None -> lambdaExpr)
@@ -336,6 +333,7 @@ let program =
     many lineParser .>> eof
 
 
+// Combine list of AST nodes in one AST 
 let combineStatements (statements: expr list) =
     let codeStatements = 
         statements 
@@ -344,10 +342,9 @@ let combineStatements (statements: expr list) =
             | _ -> true)
 
     match codeStatements with
-    | [] -> Var "()" // empty program returns unit
-    | [single] -> single // single statement program
+    | [] -> Var "()"
+    | [single] -> single
     | _ ->
-        // Build tree from right to left
         let allButLast = List.take (codeStatements.Length - 1) codeStatements
         let last = List.last codeStatements
 
@@ -355,13 +352,10 @@ let combineStatements (statements: expr list) =
             (fun curr acc ->
                 match curr with
                 | Let(name, value, Var v) when name = v -> 
-                    // Variable declaration: replace Var v with the accumulated tree
                     Let(name, value, acc)
                 | LetRec(name, value, Var v) when name = v ->
-                    // Recursive function declaration
                     LetRec(name, value, acc)
                 | _ -> 
-                    // Any other expression: wrap in Let with "_"
                     Let("_", curr, acc))
             allButLast
             last
@@ -369,6 +363,5 @@ let combineStatements (statements: expr list) =
 let parseProgram (code: string) =
     match run program code with
     | Success(result, _, _) -> 
-        // Combine the list of statements into a single AST
         combineStatements result
     | Failure(errorMsg, _, _) -> failwith errorMsg

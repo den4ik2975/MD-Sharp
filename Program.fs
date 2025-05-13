@@ -1,21 +1,20 @@
-﻿open System
-open System.IO
-open Parser // можете включить дебаг-режим, подключив модуль ParserDebug
+﻿open System.IO
+open Parser
+//open ParserDebug // можете включить дебаг-режим, подключив модуль ParserDebug
 open Eval
-open AST
+
 
 [<EntryPoint>]
 let main argv =
     let source =
         if argv.Length = 0 then
-            stdin.ReadToEnd()            // вместо CLI.readStdin ()
+            stdin.ReadToEnd()
         else
             File.ReadAllText argv[0]
 
-    // Replace the current match statement
     let parseResult =
         try
-            Ok (Parser.parseProgram source)
+            Ok (parseProgram source)
         with e -> Error e.Message
 
     match parseResult with
