@@ -55,6 +55,12 @@ Markdown source → Parser → AST → Interpreter → Result
 
 - result = square 5
 ```
+---
+
+## 📄 Документация
+
+Вся документация есть в `specification.md`
+Примеры кода в папке `samples`
 
 ---
 
