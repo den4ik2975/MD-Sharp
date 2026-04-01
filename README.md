@@ -1,4 +1,4 @@
-# 🧪 MD-Sharp
+# 🧪 MD-Sharp — Markdown-based Programming Language (F#)
 
 Экспериментальный интерпретируемый язык программирования, реализованный на F#.
 
@@ -68,6 +68,7 @@ Source Code → Lexer → Parser → AST → Interpreter
 
 ## 📄 Запуск
 
-```bash
-dotnet run
-```
+Для запуска программы выполните сборку
+
+- `dotnet build`
+- `dotnet run -- path/to/file.md`
