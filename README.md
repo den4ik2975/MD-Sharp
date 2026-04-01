@@ -1,74 +1,84 @@
-# 🧪 MD-Sharp — Markdown-based Programming Language (F#)
+# 🧪 MD-Sharp
 
-Экспериментальный интерпретируемый язык программирования, реализованный на F#.
+An experimental interpreted programming language implemented in F#.
 
-Проект исследует, как устроены языки программирования “под капотом”: от синтаксиса до исполнения.
-
-
-## 🚀 Возможности
-
-* Поддержка переменных и выражений
-* Пользовательские функции
-* Интерпретация кода через AST
-* Собственный синтаксис языка
+The project focuses on building a full execution pipeline — from parsing source code to evaluating it via a custom interpreter.
 
 
-## 🧠 Архитектура
 
-Язык реализован через классическую pipeline-модель:
+## 🚀 Features
 
+* Custom language syntax
+* Parser based on FParsec (parser combinators)
+* Abstract Syntax Tree (AST)
+* Interpreter with environment model
+* Variables and expressions
+* Recursive functions
+* Conditional expressions
+* Lists and ranges
+* Basic file I/O
+
+
+
+## 🧠 Architecture
+
+```text
+Source Code → Parser → AST → Evaluator
 ```
-Source Code → Lexer → Parser → AST → Interpreter
-```
 
-* **Lexer** — разбивает код на токены
-* **Parser** — строит AST (абстрактное синтаксическое дерево)
-* **Interpreter** — выполняет программу
+* **Parser** transforms source code into a structured AST
+* **AST** represents the program as composable expressions
+* **Evaluator** executes expressions using an environment
 
 
-## ⚙️ Пример
+
+## ⚙️ Example
 
 ```md
-﻿# Factorial calculation
-
-## Recoursive function
 - >[!!fact] n
   > if n <= 1:
   > [x] 1
   > [ ] n * [fact](n - 1)
 
-## Value definition
 - n = 6
-
-## Calculation
 ! [fact](n)
 ```
 
 
-## 🎯 Цель проекта
 
-* Понять внутреннее устройство языков программирования
-* Реализовать полный цикл обработки кода
-* Попрактиковаться в построении интерпретаторов
+## 💡 Key Ideas
+
+* Functional parsing using combinators (FParsec)
+* Clear separation between parsing and execution
+* Support for recursion via environment-based evaluation
+* Expression-oriented design
 
 
-## 🛠️ Технологии
+
+## 🎯 Purpose
+
+* Understand how interpreters work internally
+* Practice AST design and evaluation strategies
+* Explore language design concepts
+
+
+
+## 🛠 Tech Stack
 
 * F#
-* AST / Interpreter design
+* FParsec
 
 
-## 📌 Что можно улучшить
 
-* Добавить поддержку типов
-* Расширить синтаксис (условия, циклы)
-* Реализовать error handling
-* Написать REPL
+## 📌 Future Work
+
+* Type system
+* Better error handling
+* REPL
+* Modules and imports
 
 
-## 📄 Запуск
 
-Для запуска программы выполните сборку
+## 📫 Author
 
-- `dotnet build`
-- `dotnet run -- path/to/file.md`
+Denis Avramenko
